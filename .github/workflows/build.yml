@@ -31,10 +31,8 @@ jobs:
           API=$(curl -s https://api.github.com/repos/beekeeper-studio/beekeeper-studio/releases/latest)
 
           VERSION=$(echo "$API" | jq -r .tag_name | sed 's/^v//')
-          echo "Latest version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          # STRICT amd64 selection
           URL=$(echo "$API" | jq -r '
             .assets[]
             | select(.name | test("_amd64\\.deb$"))
@@ -42,11 +40,10 @@ jobs:
           ' | head -n1)
 
           if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-            echo "❌ amd64 .deb not found in release."
+            echo "❌ amd64 .deb not found."
             exit 1
           fi
 
-          echo "Downloading: $URL"
           curl -L --fail -o beekeeper.deb "$URL"
 
       - name: Skip if release exists
@@ -60,38 +57,33 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Stop build if exists
+      - name: Stop if release exists
         if: steps.check.outputs.exists == 'true'
-        run: |
-          echo "Release already exists. Skipping."
-          exit 0
+        run: exit 0
 
-      - name: Extract deb and prepare PKGBUILD
+      - name: Prepare PKGBUILD
         run: |
           mkdir -p /home/builder/pkg
           mv beekeeper.deb /home/builder/pkg/
           chown -R builder:builder /home/builder/pkg
 
-          su builder -c "
-            cd /home/builder/pkg
-            ar x beekeeper.deb
-            tar -xf data.tar.*
-          "
-
           printf '%s\n' \
           "pkgname=beekeeper-studio-bin" \
           "pkgver=${{ steps.version.outputs.version }}" \
           "pkgrel=1" \
-          "pkgdesc=\"Modern SQL editor (official Debian binary repack)\"" \
+          "pkgdesc=\"Modern SQL editor (Debian binary repack)\"" \
           "arch=(x86_64)" \
           "url=\"https://github.com/beekeeper-studio/beekeeper-studio\"" \
           "license=(MIT)" \
           "depends=(gtk3 nss libxss)" \
           "options=(!debug)" \
+          "source=(\"beekeeper.deb\")" \
+          "sha256sums=('SKIP')" \
           "" \
           "package() {" \
-          "  cp -r usr \"\$pkgdir/\"" \
-          "  cp -r opt \"\$pkgdir/\" 2>/dev/null || true" \
+          "  cd \"\$srcdir\"" \
+          "  ar x beekeeper.deb" \
+          "  tar -xf data.tar.* -C \"\$pkgdir\"" \
           "}" \
           > /home/builder/pkg/PKGBUILD
 
@@ -99,13 +91,13 @@ jobs:
         run: |
           su builder -c "cd /home/builder/pkg && makepkg -s --noconfirm"
 
-      - name: Capture built package
+      - name: Capture package
         id: pkg
         run: |
           FILE=$(ls /home/builder/pkg/beekeeper-studio-bin-*.pkg.tar.zst | head -n1)
           echo "file=$FILE" >> "$GITHUB_OUTPUT"
 
-      - name: Create GitHub Release
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
