@@ -25,22 +25,32 @@ jobs:
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
-      - name: Fetch latest release and download
+      - name: Fetch latest release (x86_64 only)
         id: version
         run: |
           API=$(curl -s https://api.github.com/repos/beekeeper-studio/beekeeper-studio/releases/latest)
+
           VERSION=$(echo "$API" | jq -r .tag_name | sed 's/^v//')
           echo "Latest version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          URL=$(echo "$API" | jq -r '.assets[] | select(.name | contains("AppImage")) | .browser_download_url' | head -n1)
+          # Strictly require x86_64 AppImage
+          URL=$(echo "$API" | jq -r '
+            .assets[]
+            | select(
+                (.name | test("AppImage")) and
+                (.name | test("x86_64"))
+              )
+            | .browser_download_url
+          ' | head -n1)
 
-          if [ -z "$URL" ]; then
-            echo "AppImage not found"
+          if [ -z "$URL" ] || [ "$URL" = "null" ]; then
+            echo "❌ x86_64 AppImage not found in release."
             exit 1
           fi
 
-          curl -L -o beekeeper.AppImage "$URL"
+          echo "Downloading: $URL"
+          curl -L --fail -o beekeeper.AppImage "$URL"
 
       - name: Skip if release exists
         id: check
@@ -92,7 +102,7 @@ jobs:
         run: |
           su builder -c "cd /home/builder/pkg && makepkg -s --noconfirm"
 
-      - name: Get built package
+      - name: Capture built package
         id: pkg
         run: |
           FILE=$(ls /home/builder/pkg/beekeeper-studio-bin-*.pkg.tar.zst | head -n1)
