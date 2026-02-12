@@ -11,6 +11,7 @@ require() {
   }
 }
 
+require aria2c
 require curl
 require jq
 require sudo
@@ -70,9 +71,10 @@ fi
 TMP_DIR=$(mktemp -d)
 cd "$TMP_DIR"
 
-echo "📥 Downloading:"
+echo "📥 Downloading (8 connections with aria2)..."
 echo "   $PKG_FILE"
-curl -L --fail -o "$PKG_FILE" "$ASSET_URL"
+
+aria2c -x 8 -s 8 -k 1M -o "$PKG_FILE" "$ASSET_URL"
 
 echo "📦 Installing package..."
 sudo pacman -U --noconfirm "$PKG_FILE"
