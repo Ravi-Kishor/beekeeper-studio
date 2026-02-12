@@ -25,11 +25,12 @@ jobs:
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
-      - name: Fetch latest release
+      - name: Fetch latest release and download
         id: version
         run: |
           API=$(curl -s https://api.github.com/repos/beekeeper-studio/beekeeper-studio/releases/latest)
           VERSION=$(echo "$API" | jq -r .tag_name | sed 's/^v//')
+          echo "Latest version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
           URL=$(echo "$API" | jq -r '.assets[] | select(.name | contains("AppImage")) | .browser_download_url' | head -n1)
@@ -55,7 +56,7 @@ jobs:
       - name: Stop build if exists
         if: steps.check.outputs.exists == 'true'
         run: |
-          echo "Release exists. Skipping."
+          echo "Release already exists. Skipping."
           exit 0
 
       - name: Prepare PKGBUILD
@@ -73,6 +74,7 @@ jobs:
           "url=\"https://github.com/beekeeper-studio/beekeeper-studio\"" \
           "license=(MIT)" \
           "depends=(gtk3 nss libxss)" \
+          "options=(!debug)" \
           "source=(\"beekeeper.AppImage\")" \
           "sha256sums=('SKIP')" \
           "" \
@@ -90,13 +92,13 @@ jobs:
         run: |
           su builder -c "cd /home/builder/pkg && makepkg -s --noconfirm"
 
-      - name: Capture package path
+      - name: Get built package
         id: pkg
         run: |
-          FILE=$(ls /home/builder/pkg/*.pkg.tar.zst)
+          FILE=$(ls /home/builder/pkg/beekeeper-studio-bin-*.pkg.tar.zst | head -n1)
           echo "file=$FILE" >> "$GITHUB_OUTPUT"
 
-      - name: Create Release
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.version }}
