@@ -1,0 +1,147 @@
+name: Build beekeeper-studio-bin (Arch)
+
+permissions:
+  contents: write
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */12 * * *"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+
+    steps:
+      # -------------------------
+      # Base system
+      # -------------------------
+      - name: Install base tools
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm base-devel git curl jq sudo desktop-file-utils
+
+      # -------------------------
+      # Create builder user
+      # -------------------------
+      - name: Create builder
+        run: |
+          useradd -m builder
+          echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+      # -------------------------
+      # Fetch latest release info
+      # -------------------------
+      - name: Get latest version
+        id: version
+        run: |
+          API_JSON=$(curl -s https://api.github.com/repos/beekeeper-studio/beekeeper-studio/releases/latest)
+          VERSION=$(echo "$API_JSON" | jq -r .tag_name | sed 's/^v//')
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          APPIMAGE_URL=$(echo "$API_JSON" | jq -r '.assets[] | select(.name | test("AppImage$")) | .browser_download_url')
+          echo "appimage_url=$APPIMAGE_URL" >> $GITHUB_OUTPUT
+
+      # -------------------------
+      # Stop if release already exists
+      # -------------------------
+      - name: Check if release exists
+        id: check_release
+        run: |
+          if gh release view v${{ steps.version.outputs.version }} >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Exit if exists
+        if: steps.check_release.outputs.exists == 'true'
+        run: echo "Release already exists. Skipping build." && exit 0
+
+      # -------------------------
+      # Download AppImage
+      # -------------------------
+      - name: Download AppImage
+        run: |
+          curl -L -o beekeeper.AppImage "${{ steps.version.outputs.appimage_url }}"
+          sha256sum beekeeper.AppImage > sha256.txt
+
+      # -------------------------
+      # Create PKGBUILD
+      # -------------------------
+      - name: Create PKGBUILD
+        run: |
+          cat > /home/builder/PKGBUILD << EOF
+          pkgname=beekeeper-studio-bin
+          pkgver=${{ steps.version.outputs.version }}
+          pkgrel=1
+          pkgdesc="Modern SQL editor and database manager (official binary)"
+          arch=(x86_64)
+          url="https://github.com/beekeeper-studio/beekeeper-studio"
+          license=(MIT)
+          depends=(gtk3 nss libxss)
+          source=("beekeeper.AppImage")
+          sha256sums=('SKIP')
+
+          package() {
+            install -d "\$pkgdir/usr/lib/beekeeper-studio"
+            install -Dm755 beekeeper.AppImage "\$pkgdir/usr/lib/beekeeper-studio/beekeeper.AppImage"
+
+            # Wrapper
+            install -d "\$pkgdir/usr/bin"
+            cat > "\$pkgdir/usr/bin/beekeeper-studio" << 'WRAPPER'
+            #!/bin/bash
+            exec /usr/lib/beekeeper-studio/beekeeper.AppImage "\$@"
+            WRAPPER
+            chmod +x "\$pkgdir/usr/bin/beekeeper-studio"
+
+            # Desktop entry
+            install -d "\$pkgdir/usr/share/applications"
+            cat > "\$pkgdir/usr/share/applications/beekeeper-studio.desktop" << 'DESKTOP'
+            [Desktop Entry]
+            Name=Beekeeper Studio
+            Exec=beekeeper-studio
+            Icon=beekeeper-studio
+            Type=Application
+            Categories=Development;Database;
+            DESKTOP
+          }
+          EOF
+
+          mv beekeeper.AppImage /home/builder/
+
+      # -------------------------
+      # Build package
+      # -------------------------
+      - name: Build package
+        run: |
+          chown -R builder:builder /home/builder
+          su builder -c "cd ~ && makepkg -s --noconfirm"
+
+      # -------------------------
+      # Prepare release asset
+      # -------------------------
+      - name: Prepare release
+        id: pkg
+        run: |
+          PKG_PATH=$(ls /home/builder/*.pkg.tar.zst)
+          PKG_FILE=$(basename "$PKG_PATH")
+          echo "pkgfile=$PKG_PATH" >> $GITHUB_OUTPUT
+          echo "pkgname=$PKG_FILE" >> $GITHUB_OUTPUT
+
+      # -------------------------
+      # Create GitHub Release
+      # -------------------------
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.version }}
+          name: beekeeper-studio-bin ${{ steps.version.outputs.version }}
+          files: ${{ steps.pkg.outputs.pkgfile }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
