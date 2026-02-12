@@ -22,46 +22,53 @@ Build includes:
 - Latest upstream stable release
 - Official upstream AppImage
 - Automatically packaged via GitHub Actions
-- Pacman-managed install
+- Pacman-managed installation
+- Debug package disabled
 
 ---
 
-# 🚀 Install / Update
+# 🚀 Install / Update (Recommended Method)
 
-Download and install the latest release:
+Install the updater:
 
 ```bash
-LATEST=$(curl -s https://api.github.com/repos/Ravi-Kishor/beekeeper-studio/releases/latest | jq -r '.assets[].browser_download_url')
-
-curl -LO "$LATEST"
-sudo pacman -U beekeeper-studio-bin-*.pkg.tar.zst
+curl -fLO https://raw.githubusercontent.com/Ravi-Kishor/beekeeper-studio/main/update-beekeeper
+chmod +x update-beekeeper
+sudo mv update-beekeeper /usr/local/bin/update-beekeeper
 ```
 
-Or download manually from:
+Then run:
+
+```bash
+update-beekeeper
+```
+
+---
+
+## 🧠 What the updater does
+
+- Detects installed version via pacman
+- Fetches latest GitHub release
+- Finds correct `.pkg.tar.zst` asset
+- Lets you choose:
+  - Update (skip if already latest)
+  - Force install
+- Downloads and installs automatically
+- Cleans temporary files
+
+---
+
+## 📦 Manual Installation
+
+You can also install manually from Releases:
 
 https://github.com/Ravi-Kishor/beekeeper-studio/releases
 
----
+Then:
 
-## 🧠 What This Package Is
-
-This is a **pacman-managed wrapper package** around the official AppImage.
-
-Installed structure:
-
+```bash
+sudo pacman -U beekeeper-studio-bin-*.pkg.tar.zst
 ```
-/usr/lib/beekeeper-studio/beekeeper.AppImage
-/usr/bin/beekeeper-studio
-```
-
-Pacman handles:
-
-- Installation
-- Upgrades
-- Removal
-- Version tracking
-
-The application itself is the official upstream binary.
 
 ---
 
@@ -70,8 +77,14 @@ The application itself is the official upstream binary.
 - Built inside Arch Linux container
 - Official upstream AppImage used
 - No source compilation
-- Debug package disabled
+- No Electron toolchain required
 - Clean minimal packaging
+- Installed structure:
+
+```
+/usr/lib/beekeeper-studio/beekeeper.AppImage
+/usr/bin/beekeeper-studio
+```
 
 ---
 
@@ -80,9 +93,9 @@ The application itself is the official upstream binary.
 This repository:
 
 - Checks upstream every 12 hours
-- Builds automatically if new version exists
-- Publishes GitHub Release
-- Skips rebuild if version already released
+- Builds automatically when a new version is released
+- Publishes a GitHub Release
+- Skips rebuild if version already exists
 
 ---
 
@@ -90,7 +103,7 @@ This repository:
 
 Arch Linux only.
 
-Requires:
+Required tools for updater:
 
 - pacman
 - curl
