@@ -1,4 +1,4 @@
-name: Build beekeeper-studio-bin (Arch)
+name: Build beekeeper-studio-bin (from amd64 .deb)
 
 permissions:
   contents: write
@@ -18,14 +18,14 @@ jobs:
       - name: Install base system
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel git curl jq sudo github-cli
+          pacman -S --noconfirm base-devel git curl jq sudo github-cli binutils tar
 
       - name: Create builder user
         run: |
           useradd -m builder
           echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
 
-      - name: Fetch latest release (x86_64 only)
+      - name: Fetch latest release and download amd64 deb
         id: version
         run: |
           API=$(curl -s https://api.github.com/repos/beekeeper-studio/beekeeper-studio/releases/latest)
@@ -34,23 +34,20 @@ jobs:
           echo "Latest version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-          # Strictly require x86_64 AppImage
+          # STRICT amd64 selection
           URL=$(echo "$API" | jq -r '
             .assets[]
-            | select(
-                (.name | test("AppImage")) and
-                (.name | test("x86_64"))
-              )
+            | select(.name | test("_amd64\\.deb$"))
             | .browser_download_url
           ' | head -n1)
 
           if [ -z "$URL" ] || [ "$URL" = "null" ]; then
-            echo "❌ x86_64 AppImage not found in release."
+            echo "❌ amd64 .deb not found in release."
             exit 1
           fi
 
           echo "Downloading: $URL"
-          curl -L --fail -o beekeeper.AppImage "$URL"
+          curl -L --fail -o beekeeper.deb "$URL"
 
       - name: Skip if release exists
         id: check
@@ -69,32 +66,32 @@ jobs:
           echo "Release already exists. Skipping."
           exit 0
 
-      - name: Prepare PKGBUILD
+      - name: Extract deb and prepare PKGBUILD
         run: |
           mkdir -p /home/builder/pkg
-          mv beekeeper.AppImage /home/builder/pkg/
+          mv beekeeper.deb /home/builder/pkg/
           chown -R builder:builder /home/builder/pkg
+
+          su builder -c "
+            cd /home/builder/pkg
+            ar x beekeeper.deb
+            tar -xf data.tar.*
+          "
 
           printf '%s\n' \
           "pkgname=beekeeper-studio-bin" \
           "pkgver=${{ steps.version.outputs.version }}" \
           "pkgrel=1" \
-          "pkgdesc=\"Modern SQL editor (official binary)\"" \
+          "pkgdesc=\"Modern SQL editor (official Debian binary repack)\"" \
           "arch=(x86_64)" \
           "url=\"https://github.com/beekeeper-studio/beekeeper-studio\"" \
           "license=(MIT)" \
           "depends=(gtk3 nss libxss)" \
           "options=(!debug)" \
-          "source=(\"beekeeper.AppImage\")" \
-          "sha256sums=('SKIP')" \
           "" \
           "package() {" \
-          "  install -d \"\$pkgdir/usr/lib/beekeeper-studio\"" \
-          "  install -Dm755 beekeeper.AppImage \"\$pkgdir/usr/lib/beekeeper-studio/beekeeper.AppImage\"" \
-          "" \
-          "  install -d \"\$pkgdir/usr/bin\"" \
-          "  printf '%s\n' '#!/bin/bash' 'exec /usr/lib/beekeeper-studio/beekeeper.AppImage \"\$@\"' > \"\$pkgdir/usr/bin/beekeeper-studio\"" \
-          "  chmod +x \"\$pkgdir/usr/bin/beekeeper-studio\"" \
+          "  cp -r usr \"\$pkgdir/\"" \
+          "  cp -r opt \"\$pkgdir/\" 2>/dev/null || true" \
           "}" \
           > /home/builder/pkg/PKGBUILD
 
