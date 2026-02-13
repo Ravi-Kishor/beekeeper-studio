@@ -95,17 +95,6 @@ jobs:
             cd "\$srcdir"
             ar x beekeeper.deb
             bsdtar -xf data.tar.* -C "\$pkgdir"
-
-            # Find real binary
-            REAL_BIN=\$(find "\$pkgdir" -type f -name "beekeeper-studio-bin" | head -n1)
-
-            # Find launcher directory
-            LAUNCHER=\$(find "\$pkgdir" -type f -name "beekeeper-studio" | head -n1)
-
-            if [ -n "\$REAL_BIN" ] && [ -n "\$LAUNCHER" ]; then
-              TARGET_DIR=\$(dirname "\$LAUNCHER")
-              install -Dm755 "\$REAL_BIN" "\$TARGET_DIR/beekeeper-studio-bin"
-            fi
           }
           EOF
 
