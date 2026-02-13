@@ -6,7 +6,7 @@ permissions:
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */23 * * *"
+    - cron: "0 3 * * *"   # daily at 03:00 UTC
 
 jobs:
   build:
@@ -18,7 +18,7 @@ jobs:
       - name: Install base system
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel git curl jq sudo github-cli binutils tar
+          pacman -S --noconfirm base-devel git curl jq sudo github-cli binutils bsdtar
 
       - name: Create builder user
         run: |
@@ -67,25 +67,44 @@ jobs:
           mv beekeeper.deb /home/builder/pkg/
           chown -R builder:builder /home/builder/pkg
 
-          printf '%s\n' \
-          "pkgname=beekeeper-studio-bin" \
-          "pkgver=${{ steps.version.outputs.version }}" \
-          "pkgrel=1" \
-          "pkgdesc=\"Modern SQL editor (Debian binary repack)\"" \
-          "arch=(x86_64)" \
-          "url=\"https://github.com/beekeeper-studio/beekeeper-studio\"" \
-          "license=(MIT)" \
-          "depends=(gtk3 nss libxss)" \
-          "options=(!debug)" \
-          "source=(\"beekeeper.deb\")" \
-          "sha256sums=('SKIP')" \
-          "" \
-          "package() {" \
-          "  cd \"\$srcdir\"" \
-          "  ar x beekeeper.deb" \
-          "  tar -xf data.tar.* -C \"\$pkgdir\"" \
-          "}" \
-          > /home/builder/pkg/PKGBUILD
+          cat > /home/builder/pkg/PKGBUILD <<EOF
+          pkgname=beekeeper-studio-bin
+          pkgver=${{ steps.version.outputs.version }}
+          pkgrel=1
+          pkgdesc="Modern SQL editor (official Debian binary repack)"
+          arch=('x86_64')
+          url="https://github.com/beekeeper-studio/beekeeper-studio"
+          license=('MIT')
+          depends=(
+            gtk3
+            nss
+            libxss
+            libx11
+            libxcb
+            libxcomposite
+            libxdamage
+            libxrandr
+            alsa-lib
+            at-spi2-core
+          )
+          options=('!debug')
+          source=("beekeeper.deb")
+          sha256sums=('SKIP')
+
+          package() {
+            cd "\$srcdir"
+            ar x beekeeper.deb
+            bsdtar -xf data.tar.* -C "\$pkgdir"
+
+            # Ensure binary is in PATH
+            if [ -d "\$pkgdir/opt" ]; then
+              BIN=\$(find "\$pkgdir/opt" -type f -name "beekeeper-studio" | head -n1)
+              if [ -n "\$BIN" ]; then
+                install -Dm755 "\$BIN" "\$pkgdir/usr/bin/beekeeper-studio"
+              fi
+            fi
+          }
+          EOF
 
       - name: Build package
         run: |
