@@ -6,7 +6,7 @@ permissions:
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 3 * * *"   # daily at 03:00 UTC
+    - cron: "0 3 * * *"
 
 jobs:
   build:
@@ -18,7 +18,7 @@ jobs:
       - name: Install base system
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel git curl jq sudo github-cli binutils libarchive
+          pacman -S --noconfirm base-devel git curl jq sudo github-cli
 
       - name: Create builder user
         run: |
@@ -96,12 +96,15 @@ jobs:
             ar x beekeeper.deb
             bsdtar -xf data.tar.* -C "\$pkgdir"
 
-            # Ensure binary is in PATH
-            if [ -d "\$pkgdir/opt" ]; then
-              BIN=\$(find "\$pkgdir/opt" -type f -name "beekeeper-studio" | head -n1)
-              if [ -n "\$BIN" ]; then
-                install -Dm755 "\$BIN" "\$pkgdir/usr/bin/beekeeper-studio"
-              fi
+            # Find real binary
+            REAL_BIN=\$(find "\$pkgdir" -type f -name "beekeeper-studio-bin" | head -n1)
+
+            # Find launcher directory
+            LAUNCHER=\$(find "\$pkgdir" -type f -name "beekeeper-studio" | head -n1)
+
+            if [ -n "\$REAL_BIN" ] && [ -n "\$LAUNCHER" ]; then
+              TARGET_DIR=\$(dirname "\$LAUNCHER")
+              install -Dm755 "\$REAL_BIN" "\$TARGET_DIR/beekeeper-studio-bin"
             fi
           }
           EOF
