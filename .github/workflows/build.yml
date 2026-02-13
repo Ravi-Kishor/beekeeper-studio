@@ -75,6 +75,8 @@ jobs:
           arch=('x86_64')
           url="https://github.com/beekeeper-studio/beekeeper-studio"
           license=('MIT')
+          provides=('beekeeper-studio')
+          conflicts=('beekeeper-studio')
           depends=(
             gtk3
             nss
@@ -95,6 +97,11 @@ jobs:
             cd "\$srcdir"
             ar x beekeeper.deb
             bsdtar -xf data.tar.* -C "\$pkgdir"
+
+            # Arch convention: expose CLI entry
+            install -d "\$pkgdir/usr/bin"
+            ln -s "/opt/Beekeeper Studio/beekeeper-studio" \
+                  "\$pkgdir/usr/bin/beekeeper-studio"
           }
           EOF
 
